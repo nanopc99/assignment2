@@ -3,6 +3,11 @@
 # Librerías
 library(tidyverse)
 library(GGally) # Gráficos de correlación
+library(caret)
+library(ggplot2)
+library(ROCR)
+library(MLTools)
+install.dependencies()
 diabetes <- read.csv("Diabetes.csv", sep = ";")
 
 #### DATOS #### 
@@ -21,10 +26,7 @@ signif(apply(diabetes, 2, sd),4)
 ####  Resumen gráfico #### 
 
 #### BOXPLOTS ####
- 
-plots <- 
-
-  imap(select( diabetes,PREGNANT:AGE), ~ {
+plots <-   imap(select( diabetes,PREGNANT:AGE), ~ {
     ggplot(diabetes, aes(x = factor(DIABETES, labels = c("No", "Si")),
                         y = .x, fill = factor(DIABETES, labels = c("No", "Si")))) + 
       geom_boxplot() +
@@ -39,7 +41,6 @@ lapply(plots, function(x) print(x))
 
 
 #### HISOGRAMAS ####
-
 HIST <- imap(select( diabetes,PREGNANT:AGE), ~ {
     ggplot(diabetes, aes(
                          x = .x, fill = factor(DIABETES, labels = c("No", "Si")))) + 
@@ -57,7 +58,6 @@ HIST <- imap(select( diabetes,PREGNANT:AGE), ~ {
 lapply(HIST, function(x) print(x))
 
 # Vemos si está balanceada la variable respuesta
-
 ggplot(data = diabetes) + 
   geom_bar(mapping = aes(x = factor(DIABETES, labels = c("No", "Si")),
                          fill = factor(DIABETES, labels = c("No", "Si"))))+ 
@@ -67,8 +67,28 @@ ggplot(data = diabetes) +
 
 
 #### BIVARIATE ANALYSIS ####
-
 ggpairs(diabetes, aes(color = factor(DIABETES, labels = c("No", "Si")), alpha = 0.2))
 
 # Correlación entre variables explicativas para evitar multicolinealidad
 ggcorr(diabetes[, -ncol(diabetes)], method = c("everything", "pearson")) 
+
+
+#### ALGORITMOS DE MACHINE LEARNING ####
+
+#Creación del train y test set
+set.seed(150) 
+trainIndex <- createDataPartition(diabetes$DIABETES, p = 0.8, list = FALSE, times = 1) 
+train_set <- diabetes[trainIndex,]
+test_set <- diabetes[-trainIndex,]
+
+#Control del train 
+ctrl <- trainControl(method = "cv", number = 10,summaryFunction = defaultSummary, classProbs = TRUE) 
+
+#Regresión logística
+LogReg.fit <- train(form = DIABETES ~ ., 
+                    data = train_set,              
+                    method = "glm",                   
+                    preProcess = c("center","scale"), 
+                    trControl = ctrl,                 
+                    metric = "Accuracy") 
+
