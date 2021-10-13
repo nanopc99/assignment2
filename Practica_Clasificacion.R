@@ -7,7 +7,7 @@ library(caret)
 library(ggplot2)
 library(ROCR)
 library(MLTools)
-install.dependencies()
+# install.dependencies()
 diabetes <- read.csv("Diabetes.csv", sep = ";")
 
 #### DATOS #### 
@@ -23,12 +23,15 @@ summary(diabetes)
 # Desviación de cada variable
 signif(apply(diabetes, 2, sd),4)
 
+# Convertimos Y en factor
+diabetes$DIABETES <- factor(diabetes$DIABETES, labels = c("No", "Si"))
+
 ####  Resumen gráfico #### 
 
 #### BOXPLOTS ####
 plots <-   imap(select( diabetes,PREGNANT:AGE), ~ {
-  ggplot(diabetes, aes(x = factor(DIABETES, labels = c("No", "Si")),
-                       y = .x, fill = factor(DIABETES, labels = c("No", "Si")))) + 
+  ggplot(diabetes, aes(x = DIABETES,
+                       y = .x, fill = DIABETES)) + 
     geom_boxplot() +
     xlab("DIABETES")+ 
     theme(legend.position = "top", legend.direction = "horizontal")+ 
@@ -40,12 +43,13 @@ plots <-   imap(select( diabetes,PREGNANT:AGE), ~ {
 lapply(plots, function(x) print(x))
 
 
+########################### Todo esto se puede omitir ##########################################################
 #### HISOGRAMAS ####
 HIST <- imap(select( diabetes,PREGNANT:AGE), ~ {
   ggplot(diabetes, aes(
-    x = .x, fill = factor(DIABETES, labels = c("No", "Si")))) + 
+    x = .x, fill = DIABETES)) + 
     geom_histogram(aes(y=stat(density))) +
-    geom_density(color="red", size=1.5, alpha = 0.2) +
+    geom_density(color= c("red"), size=1.5, alpha = 0.2) +
     xlab("DIABETES")+ 
     theme(legend.position = "top", legend.direction = "horizontal")+ 
     labs (fill = ' DIABETES ') +
@@ -59,15 +63,23 @@ lapply(HIST, function(x) print(x))
 
 # Vemos si está balanceada la variable respuesta
 ggplot(data = diabetes) + 
-  geom_bar(mapping = aes(x = factor(DIABETES, labels = c("No", "Si")),
+  geom_bar(mapping = aes(x = DIABETES,
                          fill = factor(DIABETES, labels = c("No", "Si"))))+ 
   labs (fill = ' DIABETES ')+ 
   xlab("DIABETES")+ theme_bw()+ 
   theme(legend.position = "top", legend.direction = "horizontal")
 
+#########################################################################################################
+
+# Esta funcion hace lo que yo hice arriba
+#Function for plotting multiple plots between the output of a data frame
+#and the predictors of this output.
+PlotDataframe(fdata = diabetes, 
+              output.name = "DIABETES")
+
 
 #### BIVARIATE ANALYSIS ####
-ggpairs(diabetes, aes(color = factor(DIABETES, labels = c("No", "Si")), alpha = 0.2))
+ggpairs(diabetes, aes(color = DIABETES, alpha = 0.2))
 
 # Correlación entre variables explicativas para evitar multicolinealidad
 ggcorr(diabetes[, -ncol(diabetes)], method = c("everything", "pearson")) 
@@ -88,8 +100,11 @@ str(train_set)
 ctrl <- trainControl(method = "cv", number = 10,summaryFunction = defaultSummary, classProbs = TRUE) 
 
 #Regresión logística
-train_set <- train_set %>%
-  mutate(DIABETES = factor(DIABETES == 1, levels = c(TRUE, FALSE), labels = c("Havediabetes", "Donthavediabetes")))
+
+# No hace falta esto ya
+# train_set <- train_set %>%
+#   mutate(DIABETES = factor(DIABETES == 1, levels = c(TRUE, FALSE), labels = c("Havediabetes", "Donthavediabetes")))
+
 LogReg.fit <- train(form = DIABETES ~ ., 
                     data = train_set,              
                     method = "glm",                   
@@ -110,3 +125,48 @@ test_set_eval$LRpred <- predict(LogReg.fit, type="raw", newdata = test_set) # pr
 
 head(train_set)
 
+# En los modelos, se suele partir del más complejo al más simple
+# o viceversa (hacer glm univariados para ver rqué variables entran a mi modelo)
+# En el modelo anterior, la variable SKINTHICKNESS era la que tenía unp-valor más alto
+# por tanto, puede ser que esté metiendo ruido al modelo.
+
+# Planteamos un modelo de reg log excluyendo dicha variable:
+
+LogReg.fit2 <- train(form = DIABETES ~ PREGNANT + GLUCOSE + BLOODPRESS + INSULIN
+                     + BODYMASSINDEX + PEDIGREEFUNC +AGE, 
+                    data = train_set,              
+                    method = "glm",                   
+                    preProcess = c("center","scale"), 
+                    trControl = ctrl,                 
+                    metric = "Accuracy")
+summary(LogReg.fit2) 
+ 
+
+
+
+LogReg.fit3 <- train(form = DIABETES ~ PREGNANT + GLUCOSE + BLOODPRESS + INSULIN
+                     + BODYMASSINDEX + PEDIGREEFUNC, 
+                     data = train_set,              
+                     method = "glm",                   
+                     preProcess = c("center","scale"), 
+                     trControl = ctrl,                 
+                     metric = "Accuracy")
+summary(LogReg.fit3) 
+
+LogReg.fit4 <- train(form = DIABETES ~ PREGNANT + GLUCOSE + BLOODPRESS 
+                     + BODYMASSINDEX + PEDIGREEFUNC, 
+                     data = train_set,              
+                     method = "glm",                   
+                     preProcess = c("center","scale"), 
+                     trControl = ctrl,                 
+                     metric = "Accuracy")
+summary(LogReg.fit4)
+
+# Se coge el de menor AIC (pero hay que tener cuidado porque cuando no hay mucha
+# diferencia, se tiende a coger el más sencillo o según las variables que recomiende
+# el experto. En este caso, por ejemplo, la insulina no sé yo si estaría bien quitarla)
+
+# PREGUNTAR EN CLASE SI PODEMOS HACER ESTO QUE HE HECHO DE SELECCIÓN DE VARIABLES
+AIC(LogReg.fit4$finalModel, LogReg.fit3$finalModel, LogReg.fit2$finalModel, LogReg.fit$finalModel)
+
+# Nos quedaríamos con el modelo más simple y evaluaríamos en el test
