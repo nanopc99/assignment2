@@ -99,7 +99,7 @@ str(train_set)
 #Control del train 
 ctrl <- trainControl(method = "cv", number = 10,summaryFunction = defaultSummary, classProbs = TRUE) 
 
-#Regresión logística
+#### Regresión logística #### 
 
 # No hace falta esto ya
 # train_set <- train_set %>%
@@ -116,6 +116,12 @@ summary(LogReg.fit)
 str(LogReg.fit) 
 boxplot(LogReg.fit$resample$Accuracy, xlab = "Accuracy")
 
+ggplot(data = LogReg.fit$resample, mapping = aes(x = 0, y = Accuracy)) + 
+  geom_boxplot(fill = "lightskyblue")+
+  geom_jitter(width = 0.1, alpha = 0.3)+
+  xlab("Accuracy")+
+  ggtitle("Boxplot for summary metrics of test samples")
+
 #Evaluacuón del modelo
 train_set_eval$LRprob <- predict(LogReg.fit, type="prob", newdata = train_set) # predict probabilities
 train_set_eval$LRpred <- predict(LogReg.fit, type="raw", newdata = train_set) # predict classes 
@@ -123,8 +129,47 @@ train_set_eval$LRpred <- predict(LogReg.fit, type="raw", newdata = train_set) # 
 test_set_eval$LRprob <- predict(LogReg.fit, type="prob", newdata = test_set) # predict probabilities
 test_set_eval$LRpred <- predict(LogReg.fit, type="raw", newdata = test_set) # predict classes 
 
+
+# Representamos las dos variables más significativas
+#Plot predictions of the model
+ggplot(train_set_eval) + geom_point(aes(x = BODYMASSINDEX, y = GLUCOSE, color = LRpred)) + labs(title = "Predictions for training data")
+ggplot(test_set_eval) + geom_point(aes(x = BODYMASSINDEX, y = GLUCOSE, color = LRpred)) + labs(title = "Predictions for test data")
+
 head(train_set)
 
+
+#Plot classification in a 2 dimensional space (of the 2 most significant variables)
+Plot2DClass(train_set[,-ncol(train_set)], #Input variables of the model
+            train_set$DIABETES,     #Output variable
+            LogReg.fit,#Fitted model with caret
+            var1 = "BODYMASSINDEX", var2 = "GLUCOSE", #variables that define x and y axis
+            selClass = "Si")     #Class output to be analyzed 
+
+
+## Performance measures --------------------------------------------------------------------------------
+
+#######confusion matices
+# Training
+confusionMatrix(data = train_set_eval$LRpred, #Predicted classes
+                reference = train_set_eval$DIABETES, #Real observations
+                positive = "Si") #Class labeled as Positive
+# test
+confusionMatrix(test_set_eval$LRpred, 
+                test_set_eval$DIABETES, 
+                positive = "Si")
+
+#######Classification performance plots 
+# Training
+PlotClassPerformance(train_set_eval$DIABETES,       #Real observations
+                     train_set_eval$LRprob,  #predicted probabilities
+                     selClass = "Si") #Class to be analyzed
+# test
+PlotClassPerformance(test_set_eval$DIABETES,       #Real observations
+                     test_set_eval$LRprob,  #predicted probabilities
+                     selClass = "Si") #Class to be analyzed)
+
+
+#########################################################################################################
 # En los modelos, se suele partir del más complejo al más simple
 # o viceversa (hacer glm univariados para ver rqué variables entran a mi modelo)
 # En el modelo anterior, la variable SKINTHICKNESS era la que tenía unp-valor más alto
@@ -170,3 +215,123 @@ summary(LogReg.fit4)
 AIC(LogReg.fit4$finalModel, LogReg.fit3$finalModel, LogReg.fit2$finalModel, LogReg.fit$finalModel)
 
 # Nos quedaríamos con el modelo más simple y evaluaríamos en el test
+
+#########################################################################################################
+
+
+#### kNN #### 
+
+set.seed(150) #For replication
+#Train knn model model.
+#Knn contains 1 tuning parameter k (number of neigbors). Three options:
+#  - Train with a fixed parameter: tuneGrid = data.frame(k = 5),
+#  - Try with a range of values specified in tuneGrid: tuneGrid = data.frame(k = seq(2,120,4)),
+#  - Caret chooses 10 values: tuneLength = 10,
+knn.fit = train(form = DIABETES ~., # complete model.
+                data = train_set,   #Training dataset 
+                method = "knn",
+                preProcess = c("center","scale"),
+                #tuneGrid = data.frame(k = 5),
+                tuneGrid = data.frame(k = seq(3,115,4)), #Grid search
+                #tuneLength = 10,
+                trControl = ctrl, 
+                metric = "Accuracy")
+knn.fit #information about the settings
+ggplot(knn.fit) #plot the summary metric as a function of the tuning parameter
+knn.fit$finalModel #information about final model trained
+
+#Evaluate the model with training and test sets
+#training
+train_set_eval$knn_prob <- predict(knn.fit, type="prob" , newdata = train_set) # predict probabilities
+train_set_eval$knn_pred <- predict(knn.fit, type="raw" , newdata = train_set) # predict classes 
+#test
+test_set_eval$knn_prob <- predict(knn.fit, type="prob" , newdata = test_set) # predict probabilities
+test_set_eval$knn_pred <- predict(knn.fit, type="raw" , newdata = test_set) # predict classes 
+
+#Plot classification in a 2 dimensional space
+Plot2DClass(train_set[,-ncol(train_set)], #Input variables of the model
+            train_set_eval$DIABETES,     #Output variable
+            knn.fit,#Fitted model with caret
+            var1 = "BODYMASSINDEX", var2 = "GLUCOSE", #variables that define x and y axis
+            selClass = "Si")     #Class output to be analyzed 
+
+## Performance measures --------------------------------------------------------------------------------
+
+#######confusion matrix
+# Training
+confusionMatrix(data = train_set_eval$knn_pred, #Predicted classes
+                reference = train_set_eval$DIABETES, #Real observations
+                positive = "Si") #Class labeled as Positive
+# test
+confusionMatrix(test_set_eval$knn_pred, 
+                test_set_eval$DIABETES, 
+                positive = "Si")
+
+#######Classification performance plots 
+# Training
+PlotClassPerformance(train_set_eval$DIABETES,       #Real observations
+                     train_set_eval$knn_prob,  #predicted probabilities
+                     selClass = "Si") #Class to be analyzed
+# test
+PlotClassPerformance(test_set_eval$DIABETES,       #Real observations
+                     test_set_eval$knn_prob,  #predicted probabilities
+                     selClass = "Si") #Class to be analyzed)
+
+
+
+#### DT #### 
+
+library(rpart)
+library(rpart.plot)
+library(partykit)
+
+set.seed(150) #For replication
+
+tree.fit <- train(x = train_set[,-ncol(train_set)],  #Input variables.
+                  y = train_set$DIABETES,   #Output variable
+                  method = "rpart",   #Decision tree with cp as tuning parameter
+                  control = rpart.control(minsplit = 5,  # Minimum number of obs in node to keep cutting
+                                          minbucket = 5), # Minimum number of obs in a terminal node
+                  parms = list(split = "gini"),          # impuriry measure
+                  # tuneGrid = data.frame(cp = 0.1), # TRY this: tuneGrid = data.frame(cp = 0.25),
+                  #tuneLength = 10,
+                  tuneGrid = data.frame(cp = seq(0,0.1,0.0005)),
+                  trControl = ctrl, 
+                  metric = "Accuracy")
+
+tree.fit #information about the resampling settings
+ggplot(tree.fit) #plot the summary metric as a function of the tuning parameter
+summary(tree.fit)  #information about the model trained
+tree.fit$finalModel #Cuts performed and nodes. Also shows the number and percentage of cases in each node.
+
+#Advanced plots
+rpart.plot(tree.fit$finalModel, type = 2, fallen.leaves = FALSE, box.palette = "Oranges")
+
+#Measure for variable importance
+varImp(tree.fit,scale = FALSE)
+plot(varImp(tree.fit,scale = FALSE))
+
+#Evaluate the model with training and test sets
+#training
+train_set_eval$tree_prob <- predict(tree.fit, type="prob", newdata = train_set) # predict probabilities
+train_set_eval$tree_pred <- predict(tree.fit, type="raw", newdata = train_set) # predict classes 
+#test
+test_set_eval$tree_prob <- predict(tree.fit, type="prob", newdata = test_set) # predict probabilities
+test_set_eval$tree_pred <- predict(tree.fit, type="raw", newdata = test_set) # predict classes 
+
+#Plot classification in a 2 dimensional space
+Plot2DClass(train_set[,-ncol(train_set)], #Input variables of the model
+            train_set_eval$DIABETES,     #Output variable
+            tree.fit,#Fitted model with caret
+            var1 = "BODYMASSINDEX", var2 = "GLUCOSE", #variables that define x and y axis
+            selClass = "Si")     #Class output to be analyzed 
+
+#######confusion matrix
+# Training
+confusionMatrix(data = train_set_eval$tree_pred, #Predicted classes
+                reference = train_set_eval$DIABETES, #Real observations
+                positive = "Si") #Class labeled as Positive
+# test
+confusionMatrix(test_set_eval$tree_pred, 
+                test_set_eval$DIABETES, 
+                positive = "Si")
